@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use std::error::Error;
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -9,7 +9,7 @@ use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 // "6","6.3","6.3.2","EN_H2O_OPAMBQ","Proportion of open water bodies with good ambient water quality (%)","40","Austria","2017","91.94","2013-2015","","","","Environment Live","","C","PERCENT","G"
 
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")] 
 struct Record {
     goal: String,
@@ -33,7 +33,7 @@ struct Record {
 }
 
 struct AppState {
-    records: Vec<Record>,
+    records_as_json: String,
 }
 
 fn main() {
@@ -43,12 +43,13 @@ fn main() {
         Err(_e) => Vec::new(),
     };
 
+    let as_json = serde_json::to_string(&rec).unwrap();
     // records.iter().for_each(|r| println!("{:?}: {:?}", r.geo_area_name, r.value))
 
     HttpServer::new(move || {
         App::new()
             .data(AppState {
-                records: rec.clone(),
+                records_as_json: as_json.clone(),
             })
             .route("/", web::get().to(index))
             .route("/data", web::get().to(data))
@@ -59,18 +60,9 @@ fn main() {
     .unwrap();
 }
 
-fn index() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
-}
 
-fn data(data: web::Data<AppState>) -> impl Responder {
-    let records = &data.records;
-    HttpResponse::Ok().body(&records[0].geo_area_name)
-}
-
-
+// CSV parsing
 fn parse_data() -> Result<Vec<Record>, Box<dyn Error>> {
-    // let mut rdr = csv::Reader::from_reader(std::io::stdin());
     let mut rdr = csv::Reader::from_path("./data/target6_3fixed.csv")?;
     let mut result = Vec::new();
     
@@ -78,7 +70,16 @@ fn parse_data() -> Result<Vec<Record>, Box<dyn Error>> {
         let record: Record = r?;
         result.push(record)
 
-        // println!("{:?}", record);
     }
     Ok(result)
+}
+
+
+// HTTP Handlers
+fn index() -> impl Responder {
+    HttpResponse::Ok().body("Welcome to the server. Visit /data to receive the parsed UN data.")
+}
+
+fn data(data: web::Data<AppState>) -> impl Responder {
+    HttpResponse::Ok().body(&data.records_as_json)
 }
